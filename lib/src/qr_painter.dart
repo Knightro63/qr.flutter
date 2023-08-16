@@ -5,6 +5,7 @@
  */
 
 import 'dart:async';
+import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -117,6 +118,8 @@ class QrPainter extends CustomPainter {
 
   /// Cache for all of the [Paint] objects.
   final _paintCache = PaintCache();
+
+  List<Map<String,dynamic>> _rects = [];
 
   void _init(String data) {
     if (!QrVersions.isSupportedVersion(version)) {
@@ -232,10 +235,21 @@ class QrPainter extends CustomPainter {
           paintMetrics.pixelSize + pixelVTweak,
         );
         if (dataModuleStyle.dataModuleShape == QrDataModuleShape.square) {
+          _rects.add(<String, dynamic>{
+            'Rect': squareRect,
+            'paint': paint,
+            'finder': false
+          });
           canvas.drawRect(squareRect, paint);
-        } else {
+        } 
+        else {
           final roundedRect = RRect.fromRectAndRadius(squareRect,
               Radius.circular(paintMetrics.pixelSize + pixelHTweak));
+          _rects.add(<String, dynamic>{
+            'RRect': roundedRect,
+            'paint': paint,
+            'finder': false
+          });
           canvas.drawRRect(roundedRect, paint);
         }
       }
@@ -334,10 +348,26 @@ class QrPainter extends CustomPainter {
         offset.dy + metrics.pixelSize + strokeAdjust, dotSize, dotSize);
 
     if (eyeStyle.eyeShape == QrEyeShape.square) {
+      _rects.add(<String, dynamic>{
+        'Rect': outerRect,
+        'paint': outerPaint,
+        'finder': true
+      });
+      _rects.add(<String, dynamic>{
+        'Rect': innerRect,
+        'paint': innerPaint,
+        'finder': true
+      });
+      _rects.add(<String, dynamic>{
+        'Rect': dotRect,
+        'paint': dotPaint,
+        'finder': true
+      });
       canvas.drawRect(outerRect, outerPaint);
       canvas.drawRect(innerRect, innerPaint);
       canvas.drawRect(dotRect, dotPaint);
-    } else {
+    } 
+    else {
       final roundedOuterStrokeRect =
           RRect.fromRectAndRadius(outerRect, Radius.circular(radius));
       canvas.drawRRect(roundedOuterStrokeRect, outerPaint);
@@ -349,6 +379,22 @@ class QrPainter extends CustomPainter {
       final roundedDotStrokeRect =
           RRect.fromRectAndRadius(dotRect, Radius.circular(dotSize));
       canvas.drawRRect(roundedDotStrokeRect, dotPaint);
+
+      _rects.add(<String, dynamic>{
+        'RRect': roundedOuterStrokeRect,
+        'paint': outerPaint,
+        'finder': true
+      });
+      _rects.add(<String, dynamic>{
+        'RRect': roundedInnerStrokeRect,
+        'paint': innerPaint,
+        'finder': true
+      });
+      _rects.add(<String, dynamic>{
+        'RRect': roundedDotStrokeRect,
+        'paint': dotPaint,
+        'finder': true
+      });
     }
   }
 
@@ -383,6 +429,7 @@ class QrPainter extends CustomPainter {
         Size(embeddedImage!.width.toDouble(), embeddedImage!.height.toDouble());
     final src = Alignment.center.inscribe(srcSize, Offset.zero & srcSize);
     final dst = Alignment.center.inscribe(size, position & size);
+
     canvas.drawImageRect(embeddedImage!, src, dst, paint);
   }
 
@@ -407,6 +454,93 @@ class QrPainter extends CustomPainter {
     final canvas = Canvas(recorder);
     paint(canvas, size);
     return recorder.endRecording();
+  }
+
+  /// Returns an image in SVG format
+  String toSVG(
+    Size size,
+    [
+      String? centerSVG
+    ]
+  ){
+    String convertedSVG(){
+      if(centerSVG == null) return '';
+      List<String> cs = centerSVG.split('>');
+      String info = '';
+      bool start = false;
+      double width = double.parse(centerSVG.split('width="')[1].split('" ')[0]);
+      double height = double.parse(centerSVG.split('height="')[1].split('" ')[0]);
+
+      final msa = math.max(width,height);
+      final s =  math.max(size.width, size.height)/msa*0.25;
+
+      for(int i = 0; i < cs.length;i++){
+        if(cs[i].contains('<svg') || cs[i].contains('</svg')){
+          start = !start;
+        }
+        else if(start){
+          info += '${cs[i]}>';
+        }
+      }
+      return '<g transform="translate(${size.width/2-(width*s)/2},${size.height/2-(height*s)/2}) scale($s)">\n$info\n</g>';
+    }
+    Rect rotatePoint(Rect c){
+      final rad = 90*math.pi/180;
+      final si = math.sin(rad);
+      final co = math.cos(rad);
+      final cx = size.width/2;
+      final cy = size.height/2;
+
+      // translate point back to origin:
+      final px = c.center.dx-cx;
+      final py = c.center.dy-cy;
+
+      // rotate point
+      final xnew = px * co - py * si;
+      final ynew = px * si + py * co;
+
+      // translate point back:
+      return Rect.fromCenter(
+        center: Offset(size.width-(xnew + cx), (ynew+cy)),
+        width:c.width,
+        height: c.height
+      );
+    }
+    String svg = '<svg id="Layer_1" data-name="Layer 1" xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 ${size.width} ${size.height}" class="barChart">\n';
+
+    for(int i = 0; i < _rects.length;i++){
+      if(_rects[i].keys.contains('Rect')){
+        final r = rotatePoint(_rects[i]['Rect']);
+        Paint p = _rects[i]['paint'];
+        final sw = p.strokeWidth;
+        bool finder = _rects[i]['finder'];
+        final hexColor = p.color.value.toRadixString(16).substring(2);
+        if(hexColor != 'ffffff' && sw == 0){
+          svg += '\t<rect x="${r.top}" y="${r.left}" width="${r.size.width}" height="${r.size.height}" style="fill: #$hexColor;"></rect>\n';
+        }
+        else if(hexColor != 'ffffff' && finder && sw != 0){
+          svg += '\t<rect x="${r.top}" y="${r.left}" width="${r.size.width}" height="${r.size.height}" style="stroke-width:10; stroke:#$hexColor; fill: #ffffff;"></rect>\n';
+        }
+      }
+      else if(_rects[i].keys.contains('RRect')){
+        RRect rr = _rects[i]['RRect'];
+        final r = rotatePoint(
+          Rect.fromLTWH(rr.left, rr.top, rr.width, rr.height)
+        );
+        Paint p = _rects[i]['paint'];
+        bool finder = _rects[i]['finder'];
+        final hexColor = p.color.value.toRadixString(16).substring(2);
+        if(hexColor != 'ffffff' && !finder){
+          svg += '\t<rect x="${r.top}" y="${r.left}" width="${r.width}" height="${r.height}" rx="${rr.blRadiusX}" ry="${rr.blRadiusX}" style="fill: #$hexColor;"></rect>\n';
+        }
+        else if(hexColor != 'ffffff' && finder){
+          svg += '\t<rect x="${r.top}" y="${r.left}" width="${r.size.width}" height="${r.size.height}" rx="${rr.blRadiusX}" ry="${rr.blRadiusX}" style="stroke-width:10; stroke:#$hexColor; fill: #ffffff;"></rect>\n';
+        }
+      }
+    }
+
+    svg += '${convertedSVG()}\n</svg>';
+    return svg;
   }
 
   /// Returns the raw QR code [ui.Image] object.
