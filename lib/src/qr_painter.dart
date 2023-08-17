@@ -347,7 +347,9 @@ class QrPainter extends CustomPainter {
     final dotRect = Rect.fromLTWH(offset.dx + metrics.pixelSize + strokeAdjust,
         offset.dy + metrics.pixelSize + strokeAdjust, dotSize, dotSize);
 
-    if (eyeStyle.eyeShape == QrEyeShape.square) {
+    final rad = eyeStyle.eyeShape == QrEyeShape.circle?null:eyeStyle.radius;
+
+    if (eyeStyle.eyeShape == QrEyeShape.square && rad == null) {
       _rects.add(<String, dynamic>{
         'Rect': outerRect,
         'paint': outerPaint,
@@ -369,15 +371,26 @@ class QrPainter extends CustomPainter {
     } 
     else {
       final roundedOuterStrokeRect =
-          RRect.fromRectAndRadius(outerRect, Radius.circular(radius));
+          RRect.fromRectAndRadius(
+            outerRect, 
+            Radius.circular(rad ?? radius)
+          );
       canvas.drawRRect(roundedOuterStrokeRect, outerPaint);
-
+      
+      
       final roundedInnerStrokeRect =
-          RRect.fromRectAndRadius(outerRect, Radius.circular(innerRadius));
+          RRect.fromRectAndRadius(
+            outerRect, 
+            Radius.circular(innerRadius)
+          );
       canvas.drawRRect(roundedInnerStrokeRect, innerPaint);
 
+      final ds = (rad == null?dotSize:rad/2);
       final roundedDotStrokeRect =
-          RRect.fromRectAndRadius(dotRect, Radius.circular(dotSize));
+          RRect.fromRectAndRadius(
+            dotRect, 
+            Radius.circular(ds)
+          );
       canvas.drawRRect(roundedDotStrokeRect, dotPaint);
 
       _rects.add(<String, dynamic>{
@@ -468,8 +481,23 @@ class QrPainter extends CustomPainter {
       List<String> cs = centerSVG.split('>');
       String info = '';
       bool start = false;
-      double width = double.parse(centerSVG.split('width="')[1].split('" ')[0]);
-      double height = double.parse(centerSVG.split('height="')[1].split('" ')[0]);
+      final ws = centerSVG.split('width="')[1].split('" ')[0];
+      final hs = centerSVG.split('height="')[1].split('" ')[0];
+      late double width;
+      late double height;
+      if(ws.contains('%')){
+        width = 320*(double.parse(ws.replaceAll('%', ''))/100);
+      }
+      else{
+        width = double.parse(ws);
+      }
+
+      if(ws.contains('%')){
+        height = 320*(double.parse(hs.replaceAll('%', ''))/100);
+      }
+      else{
+        height = double.parse(hs);
+      }
 
       final msa = math.max(width,height);
       final s =  math.max(size.width, size.height)/msa*0.25;
@@ -506,7 +534,7 @@ class QrPainter extends CustomPainter {
         height: c.height
       );
     }
-    String svg = '<svg id="Layer_1" data-name="Layer 1" xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 ${size.width} ${size.height}" class="barChart">\n';
+    String svg = '<svg id="Layer_1" data-name="Layer 1" xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 ${size.width} ${size.height}" class="qrCode">\n';
 
     for(int i = 0; i < _rects.length;i++){
       if(_rects[i].keys.contains('Rect')){
@@ -530,11 +558,17 @@ class QrPainter extends CustomPainter {
         Paint p = _rects[i]['paint'];
         bool finder = _rects[i]['finder'];
         final hexColor = p.color.value.toRadixString(16).substring(2);
+        final sw = p.strokeWidth;
         if(hexColor != 'ffffff' && !finder){
-          svg += '\t<rect x="${r.top}" y="${r.left}" width="${r.width}" height="${r.height}" rx="${rr.blRadiusX}" ry="${rr.blRadiusX}" style="fill: #$hexColor;"></rect>\n';
+          final radius = r.width/2;
+          //svg += '\t<rect x="${r.top}" y="${r.left}" width="${r.width}" height="${r.height}" rx="${rr.blRadiusX}" ry="${rr.blRadiusX}" style="fill: #$hexColor;"></rect>\n';
+          svg += '\t<circle cx="${r.top+radius}" cy="${r.left+radius}" r="$radius" style="fill: #$hexColor;"></circle>\n';
         }
-        else if(hexColor != 'ffffff' && finder){
-          svg += '\t<rect x="${r.top}" y="${r.left}" width="${r.size.width}" height="${r.size.height}" rx="${rr.blRadiusX}" ry="${rr.blRadiusX}" style="stroke-width:10; stroke:#$hexColor; fill: #ffffff;"></rect>\n';
+        else if(hexColor != 'ffffff' && sw == 0 && finder){
+          svg += '\t<rect x="${r.top}" y="${r.left}" rx="${rr.blRadiusX}" ry="${rr.blRadiusX}" width="${r.width}" height="${r.height}"  style="fill: #$hexColor;"></rect>\n';
+        }
+        else if(hexColor != 'ffffff' && finder && sw != 0){
+          svg += '\t<rect x="${r.top}" y="${r.left}" rx="${rr.blRadiusX}" ry="${rr.blRadiusY}" width="${r.size.width}" height="${r.size.height}"  style="stroke-width:10; stroke:#$hexColor; fill: #ffffff;"></rect>\n';
         }
       }
     }

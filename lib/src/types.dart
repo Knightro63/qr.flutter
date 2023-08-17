@@ -61,7 +61,7 @@ enum QrDataModuleShape {
 /// Styling options for finder pattern eye.
 class QrEyeStyle {
   /// Create a new set of styling options for QR Eye.
-  const QrEyeStyle({this.eyeShape, this.color});
+  const QrEyeStyle({this.eyeShape, this.color, this.radius});
 
   /// Eye shape.
   final QrEyeShape? eyeShape;
@@ -69,13 +69,16 @@ class QrEyeStyle {
   /// Color to tint the eye.
   final Color? color;
 
+  /// Radius corners of qr eye.
+  final double? radius;
+
   @override
   int get hashCode => eyeShape.hashCode ^ color.hashCode;
 
   @override
   bool operator ==(Object other) {
     if (other is QrEyeStyle) {
-      return eyeShape == other.eyeShape && color == other.color;
+      return eyeShape == other.eyeShape && color == other.color && radius == other.radius;
     }
     return false;
   }
